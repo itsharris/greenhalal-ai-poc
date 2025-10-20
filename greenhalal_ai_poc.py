@@ -3,16 +3,17 @@ import streamlit as st
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 import io
+import matplotlib.pyplot as plt
 
-# --- GREENHALAL.AI POC WEB DEMO ---
-# Streamlit app to simulate Green Halal Compliance Scoring with PDF certification
+# --- GREENHALAL.AI POC WEB DEMO v2 ---
+# Polished layout with tabs, charts, and certificate download
 
-st.set_page_config(page_title="GreenHalal.AI", page_icon="🕌", layout="centered")
+st.set_page_config(page_title="GreenHalal.AI", page_icon="🕌", layout="wide")
 st.title("🕌 GreenHalal.AI — Compliance Scoring Demo")
-st.markdown("### Assess your sustainability and halal compliance score in one click.")
+st.markdown("### Assess your sustainability and halal compliance score for your products")
 
-# Step 1: User Inputs
-st.sidebar.header("Input Company Details")
+# --- Sidebar Inputs ---
+st.sidebar.header("Input Company & Product Details")
 company_name = st.sidebar.text_input("Company Name", "EcoMeat Ltd")
 country = st.sidebar.text_input("Country", "UAE")
 energy_source = st.sidebar.selectbox("Primary Energy Source", ["solar", "wind", "hydro", "gas", "coal", "mixed"])
@@ -24,7 +25,7 @@ carbon_emission_per_unit = st.sidebar.number_input("Carbon Emission (kg CO₂/kg
 water_usage_per_unit = st.sidebar.number_input("Water Usage (litres/kg product)", 0.0, 500.0, 50.0)
 supplier_transparency_score = st.sidebar.slider("Supplier Transparency (0-1)", 0.0, 1.0, 0.8)
 
-# Step 2: Data Packaging
+# --- Package Data ---
 data = {
     "company_name": company_name,
     "country": country,
@@ -38,7 +39,7 @@ data = {
     "supplier_transparency_score": supplier_transparency_score
 }
 
-# Step 3: Scoring Functions
+# --- Scoring Functions ---
 def halal_score(data):
     score = 0
     if data["halal_certified"]: score += 50
@@ -68,7 +69,7 @@ def greenhalal_score(data):
         "rating": "Excellent" if combined > 80 else ("Good" if combined > 60 else "Needs Improvement")
     }
 
-# Step 4: Simulated Public Data (for enrichment)
+# --- Simulated Public Database ---
 public_database = {
     "EcoMeat Ltd": {"emission_data": 2.5, "verified_halal": True, "certification_id": "H12345"},
     "PureFoods Co": {"emission_data": 4.0, "verified_halal": True, "certification_id": "H98765"}
@@ -82,7 +83,7 @@ def enrich_with_public_data(data):
         data["halal_certified"] = db_data.get("verified_halal", data["halal_certified"])
     return data
 
-# Step 5: Generate Certificate PDF
+# --- Generate Certificate PDF ---
 def generate_certificate(result):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
@@ -109,27 +110,44 @@ def generate_certificate(result):
     buffer.seek(0)
     return buffer
 
-# Step 6: Compute Score and Display
+# --- Main App Logic ---
 if st.button("Calculate Compliance Score"):
     enriched_data = enrich_with_public_data(data)
     result = greenhalal_score(enriched_data)
 
-    st.subheader("Results:")
-    st.json(result)
+    # --- Tabs for Layout ---
+    tabs = st.tabs(["Summary", "Details", "Visuals", "Certificate"])
 
-    st.progress(result["greenhalal_compliance"] / 100)
-    st.metric(label="Green Halal Compliance Score", value=f"{result['greenhalal_compliance']}%", delta=None)
-    
-    if result["rating"] == "Excellent":
-        st.success("This company demonstrates strong halal integrity and sustainable practices.")
-        pdf_buffer = generate_certificate(result)
-        st.download_button(
-            label="📜 Download Certificate (PDF)",
-            data=pdf_buffer,
-            file_name=f"{result['company_name']}_GreenHalal_Certificate.pdf",
-            mime="application/pdf"
-        )
-    elif result["rating"] == "Good":
-        st.info("Good compliance level. Some areas can be improved for full certification.")
-    else:
-        st.warning("Needs improvement. Review halal sourcing or sustainability metrics.")
+    with tabs[0]:  # Summary
+        st.subheader("Summary")
+        st.metric(label="Green Halal Compliance Score", value=f"{result['greenhalal_compliance']}%")
+        if result["rating"] == "Excellent": st.success("Excellent compliance")
+        elif result["rating"] == "Good": st.info("Good compliance")
+        else: st.warning("Needs improvement")
+
+    with tabs[1]:  # Details
+        st.subheader("Score Breakdown")
+        st.write(f"Halal Score: {result['halal_score']}%")
+        st.write(f"Sustainability Score: {result['sustainability_score']}%")
+        st.write(f"Rating: {result['rating']}")
+
+    with tabs[2]:  # Visuals
+        st.subheader("Visual Representation")
+        fig, ax = plt.subplots()
+        categories = ['Halal', 'Sustainability']
+        scores = [result['halal_score'], result['sustainability_score']]
+        ax.bar(categories, scores, color=['green', 'lightgreen'])
+        ax.set_ylim(0, 100)
+        ax.set_ylabel('Score %')
+        st.pyplot(fig)
+
+    with tabs[3]:  # Certificate
+        if result["rating"] == "Excellent":
+            st.success("You are eligible for the GreenHalal Certificate.")
+            pdf_buffer = generate_certificate(result)
+            st.download_button(label="📜 Download Certificate (PDF)", data=pdf_buffer,
+                               file_name=f"{result['company_name']}_GreenHalal_Certificate.pdf",
+                               mime="application/pdf")
+        else:
+            st.info("Improve your scores to obtain the certificate.")
+
