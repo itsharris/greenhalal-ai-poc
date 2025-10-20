@@ -1,153 +1,225 @@
-import json
 import streamlit as st
+import io
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-import io
 import matplotlib.pyplot as plt
 
-# --- GREENHALAL.AI POC WEB DEMO v2 ---
-# Polished layout with tabs, charts, and certificate download
-
+# --- PAGE CONFIG ---
 st.set_page_config(page_title="GreenHalal.AI", page_icon="🕌", layout="wide")
-st.title("🕌 GreenHalal.AI — Compliance Scoring Demo")
-st.markdown("### Assess your sustainability and halal compliance score for your products")
+st.title("🕌 GreenHalal.AI — Full Compliance Demo")
+st.markdown("### Assess your halal and sustainability compliance scores for your products")
 
-# --- Sidebar Inputs ---
+# --- SIDEBAR INPUTS ---
 st.sidebar.header("Input Company & Product Details")
-company_name = st.sidebar.text_input("Company Name", "EcoMeat Ltd")
-country = st.sidebar.text_input("Country", "UAE")
-energy_source = st.sidebar.selectbox("Primary Energy Source", ["solar", "wind", "hydro", "gas", "coal", "mixed"])
-waste_management = st.sidebar.selectbox("Waste Management Practice", ["recycling", "landfill", "incineration", "none"])
-animal_welfare_certified = st.sidebar.checkbox("Animal Welfare Certified", True)
-halal_certified = st.sidebar.checkbox("Halal Certified", True)
-uses_non_halal_ingredients = st.sidebar.checkbox("Uses Non-Halal Ingredients", False)
-carbon_emission_per_unit = st.sidebar.number_input("Carbon Emission (kg CO₂/kg product)", 0.0, 20.0, 2.5)
-water_usage_per_unit = st.sidebar.number_input("Water Usage (litres/kg product)", 0.0, 500.0, 50.0)
-supplier_transparency_score = st.sidebar.slider("Supplier Transparency (0-1)", 0.0, 1.0, 0.8)
 
-# --- Package Data ---
+# Company & Product Info
+company_name = st.sidebar.text_input("Company Name", "EcoMeat Ltd")
+product_name = st.sidebar.text_input("Product Name / SKU", "Organic Lamb")
+country = st.sidebar.text_input("Country", "UAE")
+category = st.sidebar.selectbox("Product Category", ["Meat", "Dairy", "Beverages", "Snacks", "Other"])
+
+# Halal Compliance
+halal_certified = st.sidebar.checkbox("Halal Certified", True)
+zabiha_required = st.sidebar.checkbox("Zabiha Slaughter Required", True)
+uses_non_halal_ingredients = st.sidebar.checkbox("Uses Non-Halal Ingredients", False)
+halal_cert_body = st.sidebar.text_input("Halal Certification Body", "Emirates Halal Authority")
+cross_contamination_risk = st.sidebar.slider("Cross-Contamination Risk (0=low, 1=high)", 0.0, 1.0, 0.2)
+ingredient_upload = st.sidebar.file_uploader("Upload Ingredient List (CSV/XLSX)", type=["csv", "xlsx"])
+
+# Sustainability / Green Metrics
+energy_source = st.sidebar.selectbox("Primary Energy Source", ["Solar", "Wind", "Hydro", "Gas", "Coal", "Mixed"])
+renewable_percentage = st.sidebar.slider("Percentage Renewable Energy", 0, 100, 60)
+carbon_emission = st.sidebar.number_input("Carbon Emission (kg CO₂/kg product)", 0.0, 20.0, 2.5)
+water_usage = st.sidebar.number_input("Water Usage (litres/kg product)", 0.0, 500.0, 50.0)
+waste_management = st.sidebar.selectbox("Waste Management Practice", ["Recycling", "Landfill", "Incineration", "None"])
+packaging_type = st.sidebar.selectbox("Packaging Type", ["Plastic", "Biodegradable", "Recycled Paper", "Glass"])
+transportation_mode = st.sidebar.selectbox("Transportation Mode", ["Truck", "Rail", "Ship", "Air", "Mixed"])
+
+# Social & Ethical
+animal_welfare = st.sidebar.checkbox("Animal Welfare Certified", True)
+fair_labour = st.sidebar.checkbox("Fair Labour Certified", True)
+csr_initiatives = st.sidebar.text_area("CSR / Community Initiatives")
+
+# Supplier Transparency
+supplier_transparency = st.sidebar.slider("Supplier Transparency Score (0-1)", 0.0, 1.0, 0.8)
+
+# --- DATA PACKAGE ---
 data = {
     "company_name": company_name,
+    "product_name": product_name,
+    "category": category,
     "country": country,
-    "energy_source": energy_source,
-    "waste_management": waste_management,
-    "animal_welfare_certified": animal_welfare_certified,
     "halal_certified": halal_certified,
+    "zabiha_required": zabiha_required,
     "uses_non_halal_ingredients": uses_non_halal_ingredients,
-    "carbon_emission_per_unit": carbon_emission_per_unit,
-    "water_usage_per_unit": water_usage_per_unit,
-    "supplier_transparency_score": supplier_transparency_score
+    "halal_cert_body": halal_cert_body,
+    "cross_contamination_risk": cross_contamination_risk,
+    "ingredient_upload": ingredient_upload,
+    "energy_source": energy_source,
+    "renewable_percentage": renewable_percentage,
+    "carbon_emission": carbon_emission,
+    "water_usage": water_usage,
+    "waste_management": waste_management,
+    "packaging_type": packaging_type,
+    "transportation_mode": transportation_mode,
+    "animal_welfare": animal_welfare,
+    "fair_labour": fair_labour,
+    "csr_initiatives": csr_initiatives,
+    "supplier_transparency": supplier_transparency
 }
 
-# --- Scoring Functions ---
-def halal_score(data):
+# --- SCORING FUNCTIONS ---
+def halal_score(d):
     score = 0
-    if data["halal_certified"]: score += 50
-    if not data["uses_non_halal_ingredients"]: score += 30
-    if data["animal_welfare_certified"]: score += 20
-    return min(score, 100)
+    if d["halal_certified"]:
+        score += 40
+    if d["category"]=="Meat" and d["zabiha_required"]:
+        score += 20
+    if not d["uses_non_halal_ingredients"]:
+        score += 20
+    if d["animal_welfare"]:
+        score += 20
+    score -= d["cross_contamination_risk"] * 20
+    return max(0, min(score, 100))
 
-def sustainability_score(data):
+def sustainability_score(d):
     score = 0
-    if data["energy_source"] in ["solar", "wind", "hydro"]: score += 30
-    if data["waste_management"] == "recycling": score += 20
-    if data["carbon_emission_per_unit"] < 5: score += 30
-    if data["water_usage_per_unit"] < 100: score += 10
-    score += data["supplier_transparency_score"] * 10
-    return min(score, 100)
+    if d["energy_source"] in ["Solar","Wind","Hydro"]:
+        score += 20
+    score += d["renewable_percentage"] * 0.2
+    if d["carbon_emission"] < 5:
+        score += 20
+    if d["water_usage"] < 100:
+        score += 10
+    if d["waste_management"] == "Recycling":
+        score += 10
+    if d["packaging_type"] in ["Biodegradable","Recycled Paper"]:
+        score += 10
+    score += d["supplier_transparency"] * 10
+    return max(0, min(score,100))
 
-def greenhalal_score(data):
-    weights = {"halal": 0.5, "sustainability": 0.5}
-    h_score = halal_score(data)
-    s_score = sustainability_score(data)
-    combined = (h_score * weights["halal"] + s_score * weights["sustainability"])
+def ethical_score(d):
+    score = 0
+    if d["fair_labour"]:
+        score += 20
+    if d["csr_initiatives"]:
+        score += 10
+    return max(0, min(score,100))
+
+def greenhalal_compliance(d):
+    h = halal_score(d)
+    s = sustainability_score(d)
+    e = ethical_score(d)
+    combined = 0.5*h + 0.4*s + 0.1*e
+    rating = "Excellent" if combined > 80 else ("Good" if combined > 60 else "Needs Improvement")
     return {
-        "company_name": data["company_name"],
-        "halal_score": round(h_score, 2),
-        "sustainability_score": round(s_score, 2),
-        "greenhalal_compliance": round(combined, 2),
-        "rating": "Excellent" if combined > 80 else ("Good" if combined > 60 else "Needs Improvement")
+        "halal_score": round(h,2),
+        "sustainability_score": round(s,2),
+        "ethical_score": round(e,2),
+        "greenhalal_score": round(combined,2),
+        "rating": rating
     }
 
-# --- Simulated Public Database ---
-public_database = {
-    "EcoMeat Ltd": {"emission_data": 2.5, "verified_halal": True, "certification_id": "H12345"},
-    "PureFoods Co": {"emission_data": 4.0, "verified_halal": True, "certification_id": "H98765"}
-}
+# --- AI-BASED RECOMMENDATIONS ---
+def generate_recommendations(d, result):
+    recs = []
+    # Halal
+    if not d["halal_certified"]:
+        recs.append("Consider obtaining a verified Halal certification.")
+    if d["category"]=="Meat" and d["zabiha_required"] and not d["halal_certified"]:
+        recs.append("Ensure Zabiha compliance for all meat products.")
+    if d["cross_contamination_risk"] > 0.3:
+        recs.append("Reduce cross-contamination risk in production lines.")
+    if d["uses_non_halal_ingredients"]:
+        recs.append("Replace non-halal ingredients with halal alternatives.")
+    # Sustainability
+    if d["renewable_percentage"] < 50:
+        recs.append("Increase the percentage of renewable energy used.")
+    if d["carbon_emission"] > 5:
+        recs.append("Reduce carbon emissions per unit by optimising processes or sourcing low-carbon suppliers.")
+    if d["water_usage"] > 100:
+        recs.append("Reduce water usage per unit through efficient processes.")
+    if d["packaging_type"] not in ["Biodegradable","Recycled Paper"]:
+        recs.append("Consider switching to biodegradable or recycled packaging.")
+    if d["waste_management"] != "Recycling":
+        recs.append("Implement recycling programs to improve sustainability score.")
+    # Ethical
+    if not d["fair_labour"]:
+        recs.append("Obtain fair labour certification for social compliance.")
+    if not d["csr_initiatives"]:
+        recs.append("Publish CSR initiatives to improve ethical score.")
+    return recs
 
-def enrich_with_public_data(data):
-    company = data["company_name"]
-    if company in public_database:
-        db_data = public_database[company]
-        data["carbon_emission_per_unit"] = db_data.get("emission_data", data["carbon_emission_per_unit"])
-        data["halal_certified"] = db_data.get("verified_halal", data["halal_certified"])
-    return data
-
-# --- Generate Certificate PDF ---
-def generate_certificate(result):
+# --- CERTIFICATE FUNCTION ---
+def generate_certificate(result, company, product):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
-
     c.setFont("Helvetica-Bold", 22)
-    c.drawCentredString(width / 2, height - 100, "GreenHalal.AI Certificate")
-
+    c.drawCentredString(width/2, height-100, "GreenHalal.AI Certificate")
     c.setFont("Helvetica", 14)
-    c.drawCentredString(width / 2, height - 150, f"This certifies that {result['company_name']}")
-    c.drawCentredString(width / 2, height - 180, "has achieved an Excellent Green Halal Compliance Score.")
-
+    c.drawCentredString(width/2, height-150, f"{company} — {product}")
+    c.drawCentredString(width/2, height-180, f"has achieved a Green Halal Compliance Score.")
     c.setFont("Helvetica-Bold", 16)
-    c.drawCentredString(width / 2, height - 230, f"Compliance Score: {result['greenhalal_compliance']}%")
-
-    c.setFont("Helvetica", 12)
-    c.drawCentredString(width / 2, height - 280, "Awarded by GreenHalal.AI — Promoting Ethical and Sustainable Halal Practices")
-
-    c.setFont("Helvetica-Oblique", 10)
-    c.drawCentredString(width / 2, 100, "© 2025 GreenHalal.AI | Prototype Demo")
-
+    c.drawCentredString(width/2, height-220, f"Score: {result['greenhalal_score']}%")
+    c.drawCentredString(width/2, height-250, f"Rating: {result['rating']}")
+    if data["zabiha_required"] and data["category"]=="Meat":
+        c.setFont("Helvetica-Oblique", 12)
+        c.drawCentredString(width/2, height-280, "Zabiha compliance verified.")
     c.showPage()
     c.save()
     buffer.seek(0)
     return buffer
 
-# --- Main App Logic ---
-if st.button("Calculate Compliance Score"):
-    enriched_data = enrich_with_public_data(data)
-    result = greenhalal_score(enriched_data)
+# --- MAIN APP ---
+if st.button("Calculate Compliance"):
+    result = greenhalal_compliance(data)
+    recommendations = generate_recommendations(data, result)
 
-    # --- Tabs for Layout ---
-    tabs = st.tabs(["Summary", "Details", "Visuals", "Certificate"])
+    tabs = st.tabs(["Summary", "Details", "Visuals", "Certificate", "Recommendations"])
 
-    with tabs[0]:  # Summary
+    with tabs[0]:
         st.subheader("Summary")
-        st.metric(label="Green Halal Compliance Score", value=f"{result['greenhalal_compliance']}%")
-        if result["rating"] == "Excellent": st.success("Excellent compliance")
-        elif result["rating"] == "Good": st.info("Good compliance")
-        else: st.warning("Needs improvement")
+        st.metric("GreenHalal Compliance Score", f"{result['greenhalal_score']}%")
+        if result["rating"]=="Excellent":
+            st.success("Excellent Compliance")
+        elif result["rating"]=="Good":
+            st.info("Good Compliance")
+        else:
+            st.warning("Needs Improvement")
 
-    with tabs[1]:  # Details
+    with tabs[1]:
         st.subheader("Score Breakdown")
         st.write(f"Halal Score: {result['halal_score']}%")
         st.write(f"Sustainability Score: {result['sustainability_score']}%")
+        st.write(f"Ethical Score: {result['ethical_score']}%")
         st.write(f"Rating: {result['rating']}")
 
-    with tabs[2]:  # Visuals
+    with tabs[2]:
         st.subheader("Visual Representation")
         fig, ax = plt.subplots()
-        categories = ['Halal', 'Sustainability']
-        scores = [result['halal_score'], result['sustainability_score']]
-        ax.bar(categories, scores, color=['green', 'lightgreen'])
-        ax.set_ylim(0, 100)
-        ax.set_ylabel('Score %')
+        categories = ['Halal','Sustainability','Ethical']
+        scores = [result['halal_score'], result['sustainability_score'], result['ethical_score']]
+        ax.bar(categories, scores, color=['green','lightgreen','darkgreen'])
+        ax.set_ylim(0,100)
+        ax.set_ylabel("Score (%)")
         st.pyplot(fig)
 
-    with tabs[3]:  # Certificate
-        if result["rating"] == "Excellent":
-            st.success("You are eligible for the GreenHalal Certificate.")
-            pdf_buffer = generate_certificate(result)
-            st.download_button(label="📜 Download Certificate (PDF)", data=pdf_buffer,
-                               file_name=f"{result['company_name']}_GreenHalal_Certificate.pdf",
+    with tabs[3]:
+        st.subheader("Certificate")
+        if result["rating"]=="Excellent":
+            st.success("Eligible for GreenHalal Certificate")
+            pdf = generate_certificate(result, company_name, product_name)
+            st.download_button("📄 Download Certificate (PDF)", pdf,
+                               file_name=f"{company_name}_{product_name}_GreenHalal.pdf",
                                mime="application/pdf")
         else:
-            st.info("Improve your scores to obtain the certificate.")
+            st.info("Improve scores to receive certificate.")
 
+    with tabs[4]:
+        st.subheader("AI-Based Recommendations")
+        if recommendations:
+            for rec in recommendations:
+                st.info(rec)
+        else:
+            st.success("No recommendations! Your product already meets excellent compliance standards.")
